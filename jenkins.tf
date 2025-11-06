@@ -85,13 +85,18 @@ resource "null_resource" "deploy_jenkins" {
 
       echo "Deploying Jenkins with Helm..."
 
+      # Build helm command with optional version
+      HELM_CMD="helm upgrade --install jenkins jenkins/jenkins --namespace jenkins"
+
+      # Add version flag only if version is specified
+      if [ -n "${var.jenkins_version}" ]; then
+        HELM_CMD="$HELM_CMD --version ${var.jenkins_version}"
+      fi
+
+      HELM_CMD="$HELM_CMD --values ${path.module}/templates/jenkins-values.yaml --wait --timeout 10m"
+
       # Deploy Jenkins
-      helm upgrade --install jenkins jenkins/jenkins \
-        --namespace jenkins \
-        --version ${var.jenkins_version} \
-        --values ${path.module}/templates/jenkins-values.yaml \
-        --wait \
-        --timeout 10m
+      eval "$HELM_CMD"
 
       echo "✓ Jenkins deployed successfully"
 
@@ -108,9 +113,7 @@ resource "null_resource" "deploy_jenkins" {
 
       # Get initial admin password
       echo "Initial Admin Password:"
-      kubectl exec -n jenkins -it svc/jenkins -c jenkins -- \
-        cat /run/secrets/additional/chart-admin-password || \
-        kubectl get secret -n jenkins jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 --decode
+      kubectl get secret -n jenkins jenkins -o jsonpath="{.data.jenkins-admin-password}" 2>/dev/null | base64 --decode || echo "Password not found yet"
       echo ""
       echo ""
       echo "To access Jenkins:"
