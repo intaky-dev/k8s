@@ -31,12 +31,14 @@ fi
 # Check if running as root or has sudo
 if [ "$EUID" -eq 0 ]; then
     echo -e "${GREEN}✓ Running as root${NC}"
-elif sudo -n true 2>/dev/null; then
+elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     echo -e "${GREEN}✓ Has sudo access${NC}"
+elif command -v sudo >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ sudo available but needs password${NC}"
+    echo "  You may be prompted for password during installation"
 else
-    echo -e "${RED}✗ No sudo access${NC}"
-    echo "  K3s installation requires sudo privileges"
-    exit 1
+    echo -e "${YELLOW}⚠ No sudo found (assuming root/privileged environment)${NC}"
+    echo "  Installation will proceed without sudo"
 fi
 
 # Check CPU cores
@@ -94,11 +96,20 @@ fi
 
 # Check firewall status
 if command -v ufw &> /dev/null; then
-    if sudo ufw status | grep -q "Status: active"; then
-        echo -e "${YELLOW}⚠ UFW firewall is active${NC}"
-        echo "  Ensure port 6443 is open: sudo ufw allow 6443/tcp"
+    # Try to check UFW status with or without sudo
+    if [ "$EUID" -eq 0 ]; then
+        UFW_STATUS=$(ufw status 2>/dev/null || echo "")
+    elif command -v sudo >/dev/null 2>&1; then
+        UFW_STATUS=$(sudo ufw status 2>/dev/null || echo "")
     else
-        echo -e "${GREEN}✓ UFW firewall inactive${NC}"
+        UFW_STATUS=""
+    fi
+
+    if echo "$UFW_STATUS" | grep -q "Status: active"; then
+        echo -e "${YELLOW}⚠ UFW firewall is active${NC}"
+        echo "  Ensure port 6443 is open: ufw allow 6443/tcp"
+    else
+        echo -e "${GREEN}✓ UFW firewall inactive or not accessible${NC}"
     fi
 fi
 

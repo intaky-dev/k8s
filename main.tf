@@ -25,6 +25,17 @@ resource "null_resource" "install_k3s" {
       #!/bin/bash
       set -e
 
+      # Helper function to run commands with sudo if needed
+      maybe_sudo() {
+        if [ "$EUID" -eq 0 ]; then
+          "$@"
+        elif command -v sudo >/dev/null 2>&1; then
+          sudo "$@"
+        else
+          "$@"
+        fi
+      }
+
       echo "Installing k3s version ${var.k3s_version}..."
 
       # Install k3s
@@ -35,12 +46,12 @@ resource "null_resource" "install_k3s" {
 
       # Wait for k3s to be ready
       echo "Waiting for k3s to be ready..."
-      timeout 120 bash -c 'until sudo k3s kubectl get nodes | grep -q Ready; do sleep 2; done'
+      timeout 120 bash -c 'until k3s kubectl get nodes 2>/dev/null | grep -q Ready; do sleep 2; done'
 
       # Configure kubectl for current user
       mkdir -p $HOME/.kube
-      sudo cp /etc/rancher/k3s/k3s.yaml $HOME/.kube/config
-      sudo chown $(id -u):$(id -g) $HOME/.kube/config
+      maybe_sudo cp /etc/rancher/k3s/k3s.yaml $HOME/.kube/config
+      maybe_sudo chown $(id -u):$(id -g) $HOME/.kube/config
       chmod 600 $HOME/.kube/config
 
       # Update server address in kubeconfig
@@ -56,9 +67,20 @@ resource "null_resource" "install_k3s" {
     when    = destroy
     command = <<-EOT
       #!/bin/bash
+      # Helper function to run commands with sudo if needed
+      maybe_sudo() {
+        if [ "$EUID" -eq 0 ]; then
+          "$@"
+        elif command -v sudo >/dev/null 2>&1; then
+          sudo "$@"
+        else
+          "$@"
+        fi
+      }
+
       echo "Uninstalling k3s..."
       if [ -f /usr/local/bin/k3s-uninstall.sh ]; then
-        sudo /usr/local/bin/k3s-uninstall.sh
+        maybe_sudo /usr/local/bin/k3s-uninstall.sh
       fi
     EOT
 
@@ -106,9 +128,20 @@ resource "local_file" "kubeconfig" {
   provisioner "local-exec" {
     command = <<-EOT
       #!/bin/bash
+      # Helper function to run commands with sudo if needed
+      maybe_sudo() {
+        if [ "$EUID" -eq 0 ]; then
+          "$@"
+        elif command -v sudo >/dev/null 2>&1; then
+          sudo "$@"
+        else
+          "$@"
+        fi
+      }
+
       # Copy the actual k3s kubeconfig
-      sudo cp /etc/rancher/k3s/k3s.yaml ${path.module}/kubeconfig.tmp
-      sudo chown $(id -u):$(id -g) ${path.module}/kubeconfig.tmp
+      maybe_sudo cp /etc/rancher/k3s/k3s.yaml ${path.module}/kubeconfig.tmp
+      maybe_sudo chown $(id -u):$(id -g) ${path.module}/kubeconfig.tmp
 
       # Update server address
       sed 's/127.0.0.1/${var.server_ip}/g' ${path.module}/kubeconfig.tmp > ${path.module}/kubeconfig

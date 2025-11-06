@@ -55,7 +55,7 @@ status:
 	@echo "Checking k3s cluster status..."
 	@echo ""
 	@echo "=== K3s Service Status ==="
-	@sudo systemctl status k3s --no-pager | head -n 10 || echo "k3s not installed"
+	@(command -v sudo >/dev/null 2>&1 && sudo systemctl status k3s --no-pager | head -n 10) || systemctl status k3s --no-pager | head -n 10 || echo "k3s not installed"
 	@echo ""
 	@echo "=== Cluster Nodes ==="
 	@export KUBECONFIG=$(KUBECONFIG_FILE) && kubectl get nodes 2>/dev/null || echo "Cannot connect to cluster"
@@ -71,9 +71,9 @@ kubeconfig:
 
 backup:
 	@echo "Creating etcd snapshot backup..."
-	@sudo k3s etcd-snapshot save --name backup-$$(date +%Y%m%d-%H%M%S)
+	@(command -v sudo >/dev/null 2>&1 && sudo k3s etcd-snapshot save --name backup-$$(date +%Y%m%d-%H%M%S)) || k3s etcd-snapshot save --name backup-$$(date +%Y%m%d-%H%M%S)
 	@echo "Backup created in: /var/lib/rancher/k3s/server/db/snapshots/"
-	@ls -lh /var/lib/rancher/k3s/server/db/snapshots/ | tail -n 5
+	@ls -lh /var/lib/rancher/k3s/server/db/snapshots/ 2>/dev/null | tail -n 5 || echo "Cannot access backups directory"
 
 clean:
 	@echo "Cleaning Terraform files..."
