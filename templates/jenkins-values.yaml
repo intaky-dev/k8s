@@ -1,5 +1,5 @@
 # Jenkins Helm Chart Values
-# Simplified and compatible configuration for CI/CD
+# Minimal working configuration for CI/CD
 
 controller:
   # Jenkins Controller Configuration
@@ -14,41 +14,22 @@ controller:
       cpu: "2000m"
       memory: "4Gi"
 
-  # Java options for better performance
+  # Java options
   javaOpts: "-Xms2048m -Xmx2048m"
 
   # Service configuration
   serviceType: ClusterIP
   servicePort: 8080
 
-  # Install essential plugins
+  # Install essential plugins (without version numbers - auto-resolve dependencies)
   installPlugins:
-    # Core
-    - kubernetes:4253.v7700d91739e5
-    - workflow-aggregator:600.vb_57cdd26fdd7
-    - git:5.5.2
-    - configuration-as-code:1850.va_a_8c31d3158b_
-
-    # Docker
-    - docker-workflow:580.vc0c340686b_54
-
-    # Pipeline
-    - pipeline-stage-view:2.34
-    - pipeline-graph-view:323.v6a_7fb_7e8b_fef
-
-    # SCM
-    - github:1.40.0
-    - github-branch-source:1797.v86fdb_4d57d43
-
-    # Credentials
-    - credentials-binding:681.vf91669a_32e45
-
-    # UI
-    - blueocean:1.27.15
-
-    # Utilities
-    - prometheus:812.va_f28a_7ab_b_35f
-    - ansicolor:1.0.4
+    - kubernetes
+    - workflow-aggregator
+    - git
+    - configuration-as-code
+    - docker-workflow
+    - github
+    - credentials-binding
 
   # Jenkins Configuration as Code
   JCasC:
@@ -56,9 +37,7 @@ controller:
     configScripts:
       welcome-message: |
         jenkins:
-          systemMessage: |
-            Welcome to Jenkins CI/CD Server
-            Configured with Kubernetes agents and Docker support
+          systemMessage: "Welcome to Jenkins CI/CD Server - Configured with Kubernetes agents"
 
       kubernetes-cloud: |
         jenkins:
@@ -73,13 +52,10 @@ controller:
                 templates:
                   - name: "jenkins-agent"
                     label: "jenkins-agent"
-                    nodeUsageMode: NORMAL
                     containers:
                       - name: "jnlp"
                         image: "jenkins/inbound-agent:latest"
-                        alwaysPullImage: false
                         workingDir: "/home/jenkins/agent"
-                        ttyEnabled: true
                         resourceRequestCpu: "500m"
                         resourceRequestMemory: "512Mi"
                         resourceLimitCpu: "1000m"
@@ -87,32 +63,17 @@ controller:
 
                   - name: "docker-agent"
                     label: "docker"
-                    nodeUsageMode: NORMAL
                     containers:
                       - name: "jnlp"
                         image: "jenkins/inbound-agent:latest"
                         workingDir: "/home/jenkins/agent"
-                        resourceRequestCpu: "500m"
-                        resourceRequestMemory: "512Mi"
                       - name: "docker"
                         image: "docker:dind"
                         privileged: true
                         workingDir: "/home/jenkins/agent"
-                        resourceRequestCpu: "500m"
-                        resourceRequestMemory: "512Mi"
                     volumes:
                       - emptyDirVolume:
-                          memory: false
                           mountPath: "/var/lib/docker"
-
-      security: |
-        jenkins:
-          securityRealm:
-            local:
-              allowsSignup: false
-          authorizationStrategy:
-            loggedInUsersCanDoAnything:
-              allowAnonymousRead: false
 
 # Persistence for Jenkins home
 persistence:
@@ -129,7 +90,3 @@ serviceAccount:
 rbac:
   create: true
   readSecrets: true
-
-# Backup (disabled by default)
-backup:
-  enabled: false
