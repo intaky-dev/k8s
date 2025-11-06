@@ -1,5 +1,5 @@
 # Jenkins Helm Chart Values
-# Minimal working configuration for CI/CD
+# Ultra-minimal configuration - No default plugins
 
 controller:
   # Jenkins Controller Configuration
@@ -21,26 +21,20 @@ controller:
   serviceType: ClusterIP
   servicePort: 8080
 
-  # Install essential plugins (without version numbers - auto-resolve dependencies)
+  # Install only minimal essential plugins
   installPlugins:
     - kubernetes
     - workflow-aggregator
     - git
-    - configuration-as-code
-    - docker-workflow
-    - github
-    - credentials-binding
 
-  # Jenkins Configuration as Code
+  # Jenkins Configuration as Code - DISABLE DEFAULT CONFIG
   JCasC:
-    defaultConfig: true
+    defaultConfig: false
     configScripts:
-      welcome-message: |
+      jenkins-config: |
         jenkins:
-          systemMessage: "Welcome to Jenkins CI/CD Server - Configured with Kubernetes agents"
-
-      kubernetes-cloud: |
-        jenkins:
+          systemMessage: "Jenkins CI/CD Server"
+          numExecutors: 0
           clouds:
             - kubernetes:
                 name: "kubernetes"
@@ -60,20 +54,9 @@ controller:
                         resourceRequestMemory: "512Mi"
                         resourceLimitCpu: "1000m"
                         resourceLimitMemory: "1Gi"
-
-                  - name: "docker-agent"
-                    label: "docker"
-                    containers:
-                      - name: "jnlp"
-                        image: "jenkins/inbound-agent:latest"
-                        workingDir: "/home/jenkins/agent"
-                      - name: "docker"
-                        image: "docker:dind"
-                        privileged: true
-                        workingDir: "/home/jenkins/agent"
-                    volumes:
-                      - emptyDirVolume:
-                          mountPath: "/var/lib/docker"
+        security:
+          remotingCLI:
+            enabled: false
 
 # Persistence for Jenkins home
 persistence:
