@@ -1,0 +1,261 @@
+# Jenkins Helm Chart Values
+# Complete CI/CD configuration with Kubernetes agents, Docker, and plugins
+
+controller:
+  # Jenkins Controller Configuration
+  componentName: "jenkins-controller"
+  image: "jenkins/jenkins"
+  tag: "lts"
+
+  # Resources
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+
+  # Java options for better performance
+  javaOpts: "-Xms2048m -Xmx2048m -XX:+UseG1GC -XX:+UseStringDeduplication"
+
+  # Jenkins URL (for webhooks)
+  jenkinsUrl: "http://jenkins.jenkins.svc.cluster.local:8080"
+
+  # Admin user configuration
+  adminUser: "admin"
+  # Admin password will be auto-generated and stored in secret
+
+  # Service configuration
+  serviceType: ClusterIP
+  servicePort: 8080
+  targetPort: 8080
+
+  # Enable CSRF protection
+  csrf:
+    defaultCrumbIssuer:
+      enabled: true
+      proxyCompatability: true
+
+  # Install essential plugins
+  installPlugins:
+    # Kubernetes integration
+    - kubernetes:4253.v7700d91739e5
+    - workflow-aggregator:600.vb_57cdd26fdd7
+    - git:5.5.2
+    - configuration-as-code:1850.va_a_8c31d3158b_
+
+    # Docker support
+    - docker-workflow:580.vc0c340686b_54
+    - docker-plugin:1.6.2
+
+    # Pipeline support
+    - pipeline-stage-view:2.34
+    - pipeline-graph-view:323.v6a_7fb_7e8b_fef
+    - pipeline-rest-api:2.34
+    - pipeline-build-step:540.vb_e8849e1a_b_d8
+
+    # SCM plugins
+    - github:1.40.0
+    - github-branch-source:1797.v86fdb_4d57d43
+    - gitlab-plugin:1.9.1
+    - bitbucket:233.v41b_7d77a_3b_4d
+
+    # Credentials and authentication
+    - credentials-binding:681.vf91669a_32e45
+    - ssh-credentials:351.v186a_e0c7d0b_c
+    - plain-credentials:183.va_de8f1dd5a_2b_
+
+    # Build tools
+    - nodejs:1.6.1
+    - gradle:2.13
+    - maven-plugin:3.23
+    - ant:511.v0a_a_1a_334f41b_
+
+    # Notifications
+    - email-ext:2.117
+    - slack:712.v8d84c6b_6b_176
+    - http_request:1.19
+
+    # Monitoring and reporting
+    - prometheus:812.va_f28a_7ab_b_35f
+    - disk-usage:0.28
+    - build-timeout:1.33
+    - timestamper:1.27
+    - ws-cleanup:0.46
+
+    # Security
+    - authorize-project:1.7.0
+    - role-strategy:727.vd344b_eec783d
+    - matrix-auth:3.2.2
+
+    # UI improvements
+    - dark-theme:479.v661b_1b_911c01
+    - blueocean:1.27.15
+    - dashboard-view:2.520.v8e1f90e96b_60
+
+    # Utilities
+    - ansicolor:1.0.4
+    - locale:440.v34d3e85451e3
+    - cloudbees-folder:6.942.vb_43318a_156b_2
+
+  # Additional init scripts for configuration
+  initScripts:
+    - |
+      import jenkins.model.*
+      import hudson.security.*
+
+      // Disable setup wizard
+      def instance = Jenkins.getInstance()
+      instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
+      instance.save()
+
+    - |
+      // Configure number of executors
+      import jenkins.model.Jenkins
+
+      Jenkins.instance.setNumExecutors(0)  // Use agents only
+      Jenkins.instance.save()
+
+  # JCasC (Jenkins Configuration as Code)
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: |
+            Welcome to Jenkins CI/CD Server
+
+            This instance is configured with:
+            - Kubernetes dynamic agents
+            - Docker-in-Docker support
+            - Git integration
+            - Pre-installed CI/CD plugins
+
+            Ready for your pipelines!
+
+      kubernetes-cloud: |
+        jenkins:
+          clouds:
+            - kubernetes:
+                name: "kubernetes"
+                serverUrl: "https://kubernetes.default"
+                namespace: "jenkins"
+                jenkinsUrl: "http://jenkins:8080"
+                jenkinsTunnel: "jenkins-agent:50000"
+                containerCapStr: "10"
+                maxRequestsPerHostStr: "32"
+                retentionTimeout: 5
+                connectTimeout: 10
+                readTimeout: 20
+
+                templates:
+                  - name: "jenkins-agent"
+                    label: "jenkins-agent"
+                    nodeUsageMode: NORMAL
+                    containers:
+                      - name: "jnlp"
+                        image: "jenkins/inbound-agent:latest"
+                        alwaysPullImage: false
+                        workingDir: "/home/jenkins/agent"
+                        ttyEnabled: true
+                        resourceRequestCpu: "500m"
+                        resourceRequestMemory: "512Mi"
+                        resourceLimitCpu: "1000m"
+                        resourceLimitMemory: "1Gi"
+
+                  - name: "docker-agent"
+                    label: "docker"
+                    nodeUsageMode: NORMAL
+                    containers:
+                      - name: "jnlp"
+                        image: "jenkins/inbound-agent:latest"
+                        alwaysPullImage: false
+                        workingDir: "/home/jenkins/agent"
+                        ttyEnabled: true
+                        resourceRequestCpu: "500m"
+                        resourceRequestMemory: "512Mi"
+                        resourceLimitCpu: "1000m"
+                        resourceLimitMemory: "1Gi"
+                      - name: "docker"
+                        image: "docker:dind"
+                        alwaysPullImage: false
+                        workingDir: "/home/jenkins/agent"
+                        ttyEnabled: true
+                        privileged: true
+                        resourceRequestCpu: "500m"
+                        resourceRequestMemory: "512Mi"
+                        resourceLimitCpu: "2000m"
+                        resourceLimitMemory: "2Gi"
+                    volumes:
+                      - emptyDirVolume:
+                          memory: false
+                          mountPath: "/var/lib/docker"
+
+      security: |
+        jenkins:
+          securityRealm:
+            local:
+              allowsSignup: false
+          authorizationStrategy:
+            loggedInUsersCanDoAnything:
+              allowAnonymousRead: false
+
+      unclassified: |
+        unclassified:
+          location:
+            url: "http://localhost:8080"
+
+  # Sidecars for additional functionality
+  sidecars:
+    configAutoReload:
+      enabled: true
+
+# Agent configuration
+agent:
+  enabled: true
+  defaultsProviderTemplate: "jenkins-agent"
+
+  # Agent pod resources
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+# Persistence for Jenkins home
+persistence:
+  enabled: true
+  storageClass: "local-path"
+  size: "20Gi"
+  accessMode: ReadWriteOnce
+
+# Backup configuration (optional)
+backup:
+  enabled: false
+
+# Service Account
+serviceAccount:
+  create: true
+  name: jenkins
+  annotations: {}
+
+# RBAC
+rbac:
+  create: true
+  readSecrets: true
+
+# Network Policy (optional)
+networkPolicy:
+  enabled: false
+
+# Prometheus metrics
+prometheus:
+  enabled: true
+  serviceMonitorNamespace: "jenkins"
+
+# Health checks
+healthProbes: true
+healthProbesTimeout: 60

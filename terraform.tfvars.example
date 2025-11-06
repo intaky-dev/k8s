@@ -1,0 +1,47 @@
+# K3s Configuration
+
+# K3s version (leave empty for latest stable)
+# Find versions at: https://github.com/k3s-io/k3s/releases
+k3s_version = ""  # e.g., "v1.28.5+k3s1"
+
+# K3s installation options
+# --disable traefik: We disable Traefik as langflow-infra will install nginx-ingress
+# Other useful options:
+#   --write-kubeconfig-mode 644: Make kubeconfig readable by all users
+#   --cluster-cidr 10.42.0.0/16: Custom pod network CIDR
+#   --service-cidr 10.43.0.0/16: Custom service network CIDR
+k3s_install_options = "server --disable traefik"
+
+# Server IP for kubeconfig
+# Use 127.0.0.1 for local access only
+# Use your server's actual IP if you want remote access
+server_ip = "127.0.0.1"
+
+# K3s API server port
+server_port = 6443
+
+# Setup local-path storage as default storage class
+setup_local_storage = true
+
+# Install metrics-server for Horizontal Pod Autoscaling (HPA)
+install_metrics_server = true
+
+# Namespaces to create
+create_namespaces = ["langflow"]
+
+# Jenkins CI/CD Configuration
+# Enable Jenkins deployment (set to true to deploy Jenkins)
+jenkins_enabled = false
+
+# Jenkins Helm chart version (leave empty for latest)
+jenkins_version = ""
+
+# Storage size for Jenkins home directory
+jenkins_storage_size = "20Gi"
+
+# Resource limits for Jenkins controller
+jenkins_cpu_limit    = "2000m"
+jenkins_memory_limit = "4Gi"
+
+# Enable Docker-in-Docker for Jenkins agents
+jenkins_enable_docker = true
