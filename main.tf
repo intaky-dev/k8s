@@ -153,8 +153,9 @@ resource "local_file" "kubeconfig" {
   }
 }
 
-# Create storage class if needed
-resource "null_resource" "setup_storage" {
+# RBAC for local-path-provisioner
+# ClusterRole with necessary permissions
+resource "null_resource" "fix_local_path_rbac" {
   depends_on = [null_resource.wait_for_cluster]
 
   count = var.setup_local_storage ? 1 : 0
@@ -164,40 +165,84 @@ resource "null_resource" "setup_storage" {
       #!/bin/bash
       set -e
 
-      echo "Setting up local-path storage..."
+      echo "Fixing local-path-provisioner RBAC permissions..."
 
-      # Remove broken K3s local-path provisioner if it exists and is in CrashLoopBackOff
-      echo "Checking for broken K3s provisioner..."
-      if kubectl get deployment -n kube-system local-path-provisioner &> /dev/null; then
-        POD_STATUS=$(kubectl get pods -n kube-system -l app=local-path-provisioner -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
-        if [ "$POD_STATUS" != "Running" ]; then
-          echo "Removing broken K3s local-path provisioner..."
-          kubectl delete deployment -n kube-system local-path-provisioner --ignore-not-found=true
-          kubectl delete service -n kube-system local-path-provisioner --ignore-not-found=true
-          kubectl delete serviceaccount -n kube-system local-path-provisioner-service-account --ignore-not-found=true
-          kubectl delete configmap -n kube-system local-path-config --ignore-not-found=true
-          echo "✓ Broken provisioner removed"
-        else
-          echo "✓ K3s provisioner is healthy, using it"
+      # Create ClusterRole with proper permissions
+      kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: local-path-provisioner-role
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "persistentvolumeclaims", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["endpoints", "persistentvolumes", "pods"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+EOF
+
+      # Create ClusterRoleBinding
+      kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: local-path-provisioner-bind
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: local-path-provisioner-role
+subjects:
+  - kind: ServiceAccount
+    name: local-path-provisioner-service-account
+    namespace: kube-system
+EOF
+
+      echo "✓ RBAC permissions fixed"
+
+      # Restart the provisioner pod to apply new permissions
+      echo "Restarting local-path-provisioner..."
+      kubectl rollout restart deployment -n kube-system local-path-provisioner || echo "Warning: Could not restart deployment"
+
+      # Wait for it to be ready
+      kubectl rollout status deployment -n kube-system local-path-provisioner --timeout=60s || echo "Warning: Timeout waiting for provisioner"
+
+      echo "✓ local-path-provisioner ready"
+    EOT
+
+    interpreter = ["bash", "-c"]
+  }
+}
+
+# Create storage class if needed
+resource "null_resource" "setup_storage" {
+  depends_on = [null_resource.fix_local_path_rbac]
+
+  count = var.setup_local_storage ? 1 : 0
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      #!/bin/bash
+      set -e
+
+      echo "Configuring local-path storage..."
+
+      # Wait for StorageClass to be created by K3s provisioner
+      echo "Waiting for local-path StorageClass..."
+      for i in {1..30}; do
+        if kubectl get storageclass local-path &> /dev/null; then
+          echo "✓ local-path StorageClass found"
+          break
         fi
-      fi
-
-      # Check if local-path storageclass exists
-      if ! kubectl get storageclass local-path &> /dev/null; then
-        echo "local-path StorageClass not found. Installing Rancher local-path provisioner..."
-
-        # Install Rancher local-path provisioner (more stable than K3s default)
-        kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
-
-        # Wait for the provisioner pod to be ready
-        echo "Waiting for local-path-provisioner to be ready..."
-        kubectl wait --for=condition=ready pod -l app=local-path-provisioner -n local-path-storage --timeout=120s || echo "Warning: Timeout waiting for provisioner, continuing..."
-
-        # Wait a bit more for the StorageClass to be created
-        sleep 10
-      else
-        echo "✓ local-path StorageClass already exists"
-      fi
+        echo "Waiting for StorageClass... ($i/30)"
+        sleep 2
+      done
 
       # Make it the default storage class
       echo "Setting local-path as default StorageClass..."
@@ -208,7 +253,8 @@ resource "null_resource" "setup_storage" {
       echo ""
       kubectl get storageclass
       echo ""
-      kubectl get pods -A | grep "local-path"
+      echo "Local-path-provisioner status:"
+      kubectl get pods -n kube-system -l app=local-path-provisioner
     EOT
 
     interpreter = ["bash", "-c"]
