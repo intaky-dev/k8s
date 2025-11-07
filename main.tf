@@ -166,29 +166,49 @@ resource "null_resource" "setup_storage" {
 
       echo "Setting up local-path storage..."
 
+      # Remove broken K3s local-path provisioner if it exists and is in CrashLoopBackOff
+      echo "Checking for broken K3s provisioner..."
+      if kubectl get deployment -n kube-system local-path-provisioner &> /dev/null; then
+        POD_STATUS=$(kubectl get pods -n kube-system -l app=local-path-provisioner -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
+        if [ "$POD_STATUS" != "Running" ]; then
+          echo "Removing broken K3s local-path provisioner..."
+          kubectl delete deployment -n kube-system local-path-provisioner --ignore-not-found=true
+          kubectl delete service -n kube-system local-path-provisioner --ignore-not-found=true
+          kubectl delete serviceaccount -n kube-system local-path-provisioner-service-account --ignore-not-found=true
+          kubectl delete configmap -n kube-system local-path-config --ignore-not-found=true
+          echo "✓ Broken provisioner removed"
+        else
+          echo "✓ K3s provisioner is healthy, using it"
+        fi
+      fi
+
       # Check if local-path storageclass exists
       if ! kubectl get storageclass local-path &> /dev/null; then
-        echo "local-path StorageClass not found. Installing local-path provisioner..."
+        echo "local-path StorageClass not found. Installing Rancher local-path provisioner..."
 
-        # Install local-path provisioner
+        # Install Rancher local-path provisioner (more stable than K3s default)
         kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 
         # Wait for the provisioner pod to be ready
         echo "Waiting for local-path-provisioner to be ready..."
-        kubectl wait --for=condition=ready pod -l app=local-path-provisioner -n local-path-storage --timeout=120s || true
+        kubectl wait --for=condition=ready pod -l app=local-path-provisioner -n local-path-storage --timeout=120s || echo "Warning: Timeout waiting for provisioner, continuing..."
 
         # Wait a bit more for the StorageClass to be created
-        sleep 5
+        sleep 10
       else
         echo "✓ local-path StorageClass already exists"
       fi
 
       # Make it the default storage class
       echo "Setting local-path as default StorageClass..."
-      kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+      kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}' || echo "Warning: Could not patch StorageClass"
 
+      echo ""
       echo "✓ Storage setup complete"
+      echo ""
       kubectl get storageclass
+      echo ""
+      kubectl get pods -A | grep "local-path"
     EOT
 
     interpreter = ["bash", "-c"]
