@@ -166,10 +166,28 @@ resource "null_resource" "setup_storage" {
 
       echo "Setting up local-path storage..."
 
-      # k3s comes with local-path provisioner by default
+      # Check if local-path storageclass exists
+      if ! kubectl get storageclass local-path &> /dev/null; then
+        echo "local-path StorageClass not found. Installing local-path provisioner..."
+
+        # Install local-path provisioner
+        kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+
+        # Wait for the provisioner pod to be ready
+        echo "Waiting for local-path-provisioner to be ready..."
+        kubectl wait --for=condition=ready pod -l app=local-path-provisioner -n local-path-storage --timeout=120s || true
+
+        # Wait a bit more for the StorageClass to be created
+        sleep 5
+      else
+        echo "✓ local-path StorageClass already exists"
+      fi
+
       # Make it the default storage class
+      echo "Setting local-path as default StorageClass..."
       kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 
+      echo "✓ Storage setup complete"
       kubectl get storageclass
     EOT
 
